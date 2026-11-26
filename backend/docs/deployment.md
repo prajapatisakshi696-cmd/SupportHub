@@ -1,8 +1,10 @@
 # Production deployment
 
 SupportHub uses separate Vercel (frontend), Render (Express API), MongoDB Atlas,
-and Cloudinary services. Keep the frontend and API as separate deployments;
-the Express API remains the business-logic and authorization layer.
+and Cloudinary services. This split keeps the long-running Socket.IO server and
+SLA monitor on Render; the frontend calls the Render API directly from the
+browser. There are no Vercel service bindings in this architecture because
+there are no server-to-server calls between Vercel services.
 
 ## 1. Prepare MongoDB Atlas
 
@@ -20,24 +22,21 @@ the Express API remains the business-logic and authorization layer.
 
 ## 2. Deploy the API to Render
 
-Create a Web Service from the repository with the repository root as the
-service root. Configure:
+Create a Web Service from the repository root. You can use the root
+`render.yaml` Blueprint or configure the service manually with:
 
 - Build command: `npm ci`
 - Start command: `npm run start:backend`
 - Health check path: `/api/v1/health`
 - Runtime: Node.js 20.19 or newer
 
-Set these Render environment variables:
+The Blueprint sets `NODE_ENV=production` and `COOKIE_SAME_SITE=none`, and asks
+you to supply `MONGODB_URI`, `FRONTEND_URL`, and the two token secrets. Add
+these optional variables in Render if you enable password-reset email or file
+uploads:
 
 | Variable | Value |
 | --- | --- |
-| `NODE_ENV` | `production` |
-| `MONGODB_URI` | Atlas connection string |
-| `FRONTEND_URL` | Exact deployed frontend origin, for example `https://supporthub.vercel.app` |
-| `ACCESS_TOKEN_SECRET` | Unique random secret of at least 64 characters |
-| `REFRESH_TOKEN_SECRET` | A different unique random secret of at least 64 characters |
-| `COOKIE_SAME_SITE` | `none` for separate Vercel/Render sites |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Production mail provider credentials |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Cloudinary credentials, required for uploads |
 
@@ -59,23 +58,26 @@ are rejected.
 
 ## 3. Deploy the frontend to Vercel
 
-Import the same repository as a Vercel project and select `frontend` as the
-Root Directory. Use the existing Next.js build command (`npm run build`) and
-set:
+Import the same repository as a Vercel project and set `frontend` as the Root
+Directory. Vercel detects Next.js and uses the existing `npm run build`
+command. Set:
 
 | Variable | Value |
 | --- | --- |
 | `NEXT_PUBLIC_API_URL` | `https://<render-service>.onrender.com/api/v1` |
 
 The project is an npm-workspaces monorepo; keep the root `package-lock.json`
-available to Vercel and use its detected npm install command. Set the Render
-`FRONTEND_URL` to the final Vercel production domain (or your stable custom
-domain). Preview deployments need a matching backend origin to use
-cookie-authenticated APIs and sockets.
+available to Vercel and use its detected npm install command. Set Render's
+`FRONTEND_URL` to the exact Vercel production origin (or stable custom domain),
+then redeploy the API. The frontend's REST and Socket.IO clients use the
+configured API URL, so browser traffic goes directly to Render. Preview
+deployments need a matching backend origin to use cookie-authenticated APIs
+and sockets; the current origin policy only trusts the single `FRONTEND_URL`.
 
 ## 4. Verify the deployment
 
-1. Open `https://<render-service>.onrender.com/api/v1/health`.
+1. Open `https://<render-service>.onrender.com/api/v1/health`; expect
+   `{"status":"ok","service":"supporthub-api",...}`.
 2. Register a customer, create a ticket, and verify the customer and staff
    workspaces remain role-specific.
 3. Provision admin and agent accounts through a trusted, out-of-band process;
