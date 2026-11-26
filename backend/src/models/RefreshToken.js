@@ -1,0 +1,50 @@
+import mongoose from "mongoose";
+
+const refreshTokenSchema = new mongoose.Schema(
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+    tokenHash: {
+      type: String,
+      required: true,
+      unique: true,
+      select: false,
+    },
+    expiresAt: {
+      type: Date,
+      required: true,
+    },
+    revokedAt: {
+      type: Date,
+    },
+    replacedByTokenHash: {
+      type: String,
+      select: false,
+    },
+    createdByIp: {
+      type: String,
+      trim: true,
+      maxlength: 64,
+    },
+    userAgent: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+    },
+    lastUsedAt: {
+      type: Date,
+    },
+  },
+  { timestamps: true },
+);
+
+refreshTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+const RefreshToken =
+  mongoose.models.RefreshToken ?? mongoose.model("RefreshToken", refreshTokenSchema);
+
+export default RefreshToken;
